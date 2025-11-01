@@ -14,6 +14,7 @@ from .point_selection import points_in_mesh, points_below_mesh
 from .block_proportion import block_proportions
 from .grid_proportion import grid_proportions
 from .grid_detection import detect_grid_from_blocks
+from .accelerators import check_numba_available, check_joblib_available
 
 __version__ = "0.1.0"
 __all__ = [
@@ -23,4 +24,6 @@ __all__ = [
     "block_proportions",
     "grid_proportions",
     "detect_grid_from_blocks",
+    "check_numba_available",
+    "check_joblib_available",
 ]

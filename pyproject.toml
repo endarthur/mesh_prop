@@ -29,9 +29,16 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+speedups = [
+    "numba>=0.56.0",
+    "joblib>=1.2.0",
+]
 dev = [
     "pytest>=7.0.0",
     "pytest-cov>=4.0.0",
+]
+all = [
+    "mesh_prop[speedups,dev]",
 ]
 
 [tool.setuptools]

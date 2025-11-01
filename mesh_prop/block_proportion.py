@@ -7,9 +7,10 @@ import numpy as np
 from .point_selection import points_in_mesh, points_below_mesh
 from .grid_detection import detect_grid_from_blocks
 from .grid_proportion import grid_proportions
+from .accelerators import parallel_map, get_optimal_n_jobs
 
 
-def block_proportions(mesh, blocks, method='inside', resolution=5, dimensions=None, auto_optimize=True):
+def block_proportions(mesh, blocks, method='inside', resolution=5, dimensions=None, auto_optimize=True, n_jobs=1):
     """
     Calculate what proportion of each block is inside or below a mesh.
     
@@ -51,6 +52,15 @@ def block_proportions(mesh, blocks, method='inside', resolution=5, dimensions=No
         If True (default), automatically detect if blocks form a regular grid and use
         the much faster grid_proportions() function instead. This can provide 100-1000×
         speedup for regular grids. Set to False to always use the sampling-based approach.
+    n_jobs : int or 'auto', optional
+        Number of parallel jobs to use for processing blocks. Only used when auto_optimize
+        is False (grid_proportions doesn't need parallelization as it's already very fast).
+        - If 1 (default): Sequential processing (no parallelization)
+        - If > 1: Use that many parallel jobs
+        - If 'auto': Use number of CPU cores
+        - If 'auto' or > 1: Requires joblib (install with pip install mesh_prop[speedups])
+        Parallel processing can provide 2-8× speedup on multi-core CPUs.
+        Default is 1 (sequential).
     
     Returns
     -------
@@ -188,35 +198,67 @@ def block_proportions(mesh, blocks, method='inside', resolution=5, dimensions=No
     
     proportions = np.zeros(n_blocks, dtype=np.float64)
     
-    # Batch process blocks for better performance
-    # Generate all sample points at once and test them together
+    # Determine test function
     if method == 'inside':
         test_func = points_in_mesh
     else:  # method == 'below'
         test_func = points_below_mesh
     
-    # Generate sample points for each block
-    for i in range(n_blocks):
-        centroid = centroids[i]
+    # Check if we should use parallel processing
+    n_jobs_actual = get_optimal_n_jobs(n_jobs)
+    use_parallel = n_jobs_actual is not None and n_jobs_actual > 1 and n_blocks > 1
+    
+    if use_parallel:
+        # Process blocks in parallel
+        def process_single_block(i):
+            """Process a single block and return its proportion."""
+            centroid = centroids[i]
+            
+            # Get dimensions for this block
+            if use_dimensions is not None:
+                block_dims = use_dimensions
+            else:
+                block_dims = individual_dims[i]
+            
+            # Convert centroid and dimensions to min/max corners
+            min_corner = centroid - np.array(block_dims) / 2.0
+            max_corner = centroid + np.array(block_dims) / 2.0
+            
+            # Create a grid of sample points
+            sample_points = _generate_block_samples(min_corner, max_corner, resolution_tuple)
+            
+            # Test which points satisfy the condition
+            satisfied = test_func(mesh, sample_points)
+            
+            # Calculate proportion
+            return np.mean(satisfied)
         
-        # Get dimensions for this block
-        if use_dimensions is not None:
-            block_dims = use_dimensions
-        else:
-            block_dims = individual_dims[i]
-        
-        # Convert centroid and dimensions to min/max corners
-        min_corner = centroid - np.array(block_dims) / 2.0
-        max_corner = centroid + np.array(block_dims) / 2.0
-        
-        # Create a grid of sample points
-        sample_points = _generate_block_samples(min_corner, max_corner, resolution_tuple)
-        
-        # Test which points satisfy the condition
-        satisfied = test_func(mesh, sample_points)
-        
-        # Calculate proportion
-        proportions[i] = np.mean(satisfied)
+        # Process all blocks in parallel
+        proportions_list = parallel_map(process_single_block, range(n_blocks), n_jobs=n_jobs_actual)
+        proportions = np.array(proportions_list, dtype=np.float64)
+    else:
+        # Process blocks sequentially
+        for i in range(n_blocks):
+            centroid = centroids[i]
+            
+            # Get dimensions for this block
+            if use_dimensions is not None:
+                block_dims = use_dimensions
+            else:
+                block_dims = individual_dims[i]
+            
+            # Convert centroid and dimensions to min/max corners
+            min_corner = centroid - np.array(block_dims) / 2.0
+            max_corner = centroid + np.array(block_dims) / 2.0
+            
+            # Create a grid of sample points
+            sample_points = _generate_block_samples(min_corner, max_corner, resolution_tuple)
+            
+            # Test which points satisfy the condition
+            satisfied = test_func(mesh, sample_points)
+            
+            # Calculate proportion
+            proportions[i] = np.mean(satisfied)
     
     return proportions
 
