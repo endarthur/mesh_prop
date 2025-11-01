@@ -120,6 +120,18 @@ blocks_centroids = [
 ]
 proportions = block_proportions(mesh, blocks_centroids, dimensions=(0.5, 0.5, 0.5), resolution=5)
 
+# Works seamlessly with pandas DataFrames
+import pandas as pd
+df = pd.DataFrame({
+    'x_centroid': [0.25, 2.5],
+    'y_centroid': [0.25, 2.5],
+    'z_centroid': [0.25, 2.5],
+    'dx': [0.5, 1.0],
+    'dy': [0.5, 1.0],
+    'dz': [0.5, 1.0]
+})
+proportions = block_proportions(mesh, df, method='inside', resolution=5)
+
 # For open meshes, use method='below'
 proportions_below = block_proportions(plane, blocks, method='below', resolution=5)
 ```
@@ -184,7 +196,7 @@ Calculate what proportion of each block is inside or below a mesh.
 
 **Parameters:**
 - `mesh` (Mesh): The triangular mesh
-- `blocks` (array_like): Shape (n_blocks, 3) or (n_blocks, 6). Blocks defined by centroids and dimensions.
+- `blocks` (array_like or pandas.DataFrame): Shape (n_blocks, 3) or (n_blocks, 6). Blocks defined by centroids and dimensions. Pandas DataFrames are automatically converted.
   - If shape is (n_blocks, 3): Each row is [x_centroid, y_centroid, z_centroid]. Requires `dimensions` parameter.
   - If shape is (n_blocks, 6): Each row is [x_centroid, y_centroid, z_centroid, dx, dy, dz].
 - `method` (str): Either 'inside' or 'below'. Default: 'inside'

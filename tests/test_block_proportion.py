@@ -7,6 +7,13 @@ import numpy as np
 import warnings
 from mesh_prop import Mesh, block_proportions
 
+# Try importing pandas for DataFrame tests
+try:
+    import pandas as pd
+    HAS_PANDAS = True
+except ImportError:
+    HAS_PANDAS = False
+
 
 def test_block_proportions_simple_inside():
     """Test block proportions for blocks inside a tetrahedron."""
@@ -396,3 +403,78 @@ def test_block_proportions_cube():
     
     # Should be 1.0 (entirely inside)
     assert proportions[0] == 1.0
+
+
+@pytest.mark.skipif(not HAS_PANDAS, reason="pandas not installed")
+def test_block_proportions_pandas_dataframe_6col():
+    """Test block proportions with pandas DataFrame (6 columns)."""
+    vertices = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    triangles = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
+    mesh = Mesh(vertices, triangles)
+    
+    # Create DataFrame with 6 columns
+    df = pd.DataFrame({
+        'x_centroid': [0.2, 0.75],
+        'y_centroid': [0.2, 0.75],
+        'z_centroid': [0.2, 0.75],
+        'dx': [0.2, 0.5],
+        'dy': [0.2, 0.5],
+        'dz': [0.2, 0.5]
+    })
+    
+    # Should work directly with DataFrame
+    proportions = block_proportions(mesh, df, method='inside', resolution=3)
+    
+    assert len(proportions) == 2
+    assert proportions[0] > 0.5  # mostly inside
+    assert proportions[1] < 0.5  # mostly outside
+
+
+@pytest.mark.skipif(not HAS_PANDAS, reason="pandas not installed")
+def test_block_proportions_pandas_dataframe_3col():
+    """Test block proportions with pandas DataFrame (3 columns + dimensions)."""
+    vertices = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    triangles = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
+    mesh = Mesh(vertices, triangles)
+    
+    # Create DataFrame with 3 columns
+    df = pd.DataFrame({
+        'x_centroid': [0.2, 0.75],
+        'y_centroid': [0.2, 0.75],
+        'z_centroid': [0.2, 0.75]
+    })
+    
+    # Should work with dimensions parameter
+    proportions = block_proportions(mesh, df, dimensions=(0.2, 0.2, 0.2), method='inside', resolution=3)
+    
+    assert len(proportions) == 2
+    assert proportions[0] > 0.5  # mostly inside
+    assert proportions[1] < 0.5  # mostly outside
+
+
+@pytest.mark.skipif(not HAS_PANDAS, reason="pandas not installed")
+def test_block_proportions_pandas_dataframe_subset_columns():
+    """Test block proportions with pandas DataFrame using subset of columns."""
+    vertices = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    triangles = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
+    mesh = Mesh(vertices, triangles)
+    
+    # Create DataFrame with extra columns
+    df = pd.DataFrame({
+        'id': [1, 2],
+        'x_centroid': [0.2, 0.75],
+        'y_centroid': [0.2, 0.75],
+        'z_centroid': [0.2, 0.75],
+        'dx': [0.2, 0.5],
+        'dy': [0.2, 0.5],
+        'dz': [0.2, 0.5],
+        'extra': ['a', 'b']
+    })
+    
+    # Select only the relevant columns
+    blocks_df = df[['x_centroid', 'y_centroid', 'z_centroid', 'dx', 'dy', 'dz']]
+    proportions = block_proportions(mesh, blocks_df, method='inside', resolution=3)
+    
+    assert len(proportions) == 2
+    assert proportions[0] > 0.5  # mostly inside
+    assert proportions[1] < 0.5  # mostly outside

@@ -19,8 +19,9 @@ def block_proportions(mesh, blocks, method='inside', resolution=5, dimensions=No
     ----------
     mesh : Mesh
         The triangular mesh.
-    blocks : array_like, shape (n_blocks, 3) or (n_blocks, 6)
-        Array defining blocks by their centroids and dimensions.
+    blocks : array_like or pandas.DataFrame, shape (n_blocks, 3) or (n_blocks, 6)
+        Array or DataFrame defining blocks by their centroids and dimensions.
+        Pandas DataFrames are automatically converted to arrays.
         - If shape is (n_blocks, 3): blocks[i] = [x_centroid, y_centroid, z_centroid].
           In this case, `dimensions` parameter must be provided.
         - If shape is (n_blocks, 6): blocks[i] = [x_centroid, y_centroid, z_centroid, dx, dy, dz].
@@ -58,6 +59,10 @@ def block_proportions(mesh, blocks, method='inside', resolution=5, dimensions=No
     >>> proportions = block_proportions(mesh, blocks, dimensions=(0.5, 0.5, 0.5), resolution=5)
     >>> # Different resolution per axis
     >>> proportions = block_proportions(mesh, blocks, dimensions=(0.5, 0.5, 0.5), resolution=(10, 5, 3))
+    >>> # Using pandas DataFrame
+    >>> import pandas as pd
+    >>> df = pd.DataFrame({'x': [0.25], 'y': [0.25], 'z': [0.25], 'dx': [0.5], 'dy': [0.5], 'dz': [0.5]})
+    >>> proportions = block_proportions(mesh, df, method='inside', resolution=5)
     """
     blocks = np.asarray(blocks, dtype=np.float64)
     
