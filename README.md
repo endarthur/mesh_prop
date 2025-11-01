@@ -100,14 +100,18 @@ print(below)  # [True, False]
 from mesh_prop import block_proportions
 
 # Define blocks as pairs of opposite corners [min_corner, max_corner]
+# Each block is specified as [[x_min, y_min, z_min], [x_max, y_max, z_max]]
 blocks = [
     [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],  # small block near origin
     [[2.0, 2.0, 2.0], [3.0, 3.0, 3.0]],  # block far from mesh
 ]
 
-# Calculate proportions inside the mesh
+# Calculate proportions inside the mesh with uniform resolution
 proportions = block_proportions(mesh, blocks, method='inside', resolution=5)
 print(proportions)  # [0.8, 0.0] (80% inside, 0% inside)
+
+# Use different resolutions for each axis (x, y, z)
+proportions = block_proportions(mesh, blocks, method='inside', resolution=(10, 5, 3))
 
 # For open meshes, use method='below'
 proportions_below = block_proportions(plane, blocks, method='below', resolution=5)
@@ -173,9 +177,9 @@ Calculate what proportion of each block is inside or below a mesh.
 
 **Parameters:**
 - `mesh` (Mesh): The triangular mesh
-- `blocks` (array_like): Shape (n_blocks, 2, 3). Each block defined by [min_corner, max_corner]
+- `blocks` (array_like): Shape (n_blocks, 2, 3). Each block defined by [[x_min, y_min, z_min], [x_max, y_max, z_max]]
 - `method` (str): Either 'inside' or 'below'. Default: 'inside'
-- `resolution` (int): Number of sample points per dimension. Default: 5
+- `resolution` (int or tuple): Number of sample points per dimension. Can be a single int for uniform resolution or a tuple (res_x, res_y, res_z) for different resolutions per axis. Default: 5
 
 **Returns:**
 - `ndarray`: Shape (n_blocks,), dtype=float. Proportion in range [0.0, 1.0]

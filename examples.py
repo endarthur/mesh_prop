@@ -118,9 +118,15 @@ def example_block_proportions():
     print("\nBlock proportions (method='inside'):")
     for resolution in [3, 5, 10]:
         proportions = block_proportions(mesh, blocks, method='inside', resolution=resolution)
-        print(f"\n  Resolution={resolution}:")
+        print(f"\n  Uniform resolution={resolution}:")
         for i, (block, prop) in enumerate(zip(blocks, proportions)):
             print(f"    Block {i} {block[0]} -> {block[1]}: {prop:.2%}")
+    
+    # Calculate with tuple resolution (different per axis)
+    print("\n  Tuple resolution=(10, 5, 3) [high x, medium y, low z]:")
+    proportions = block_proportions(mesh, blocks, method='inside', resolution=(10, 5, 3))
+    for i, (block, prop) in enumerate(zip(blocks, proportions)):
+        print(f"    Block {i} {block[0]} -> {block[1]}: {prop:.2%}")
 
 
 def example_cube():

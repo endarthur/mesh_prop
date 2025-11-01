@@ -196,6 +196,62 @@ def test_block_proportions_resolution():
     assert prop_high[0] > 0
 
 
+def test_block_proportions_tuple_resolution():
+    """Test block proportions with tuple resolution (different per axis)."""
+    vertices = [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1]
+    ]
+    triangles = [
+        [0, 1, 2],
+        [0, 1, 3],
+        [0, 2, 3],
+        [1, 2, 3]
+    ]
+    mesh = Mesh(vertices, triangles)
+    
+    # Block inside
+    blocks = [
+        [[0.1, 0.1, 0.1], [0.3, 0.3, 0.3]]
+    ]
+    
+    # Test with tuple resolution (high x, low y, medium z)
+    proportions = block_proportions(mesh, blocks, method='inside', resolution=(10, 3, 5))
+    
+    # Should be mostly inside
+    assert proportions[0] > 0.5
+
+
+def test_block_proportions_tuple_vs_uniform_resolution():
+    """Test that tuple and uniform resolution produce consistent results."""
+    vertices = [
+        [0, 0, 0],
+        [1, 0, 0],
+        [0, 1, 0],
+        [0, 0, 1]
+    ]
+    triangles = [
+        [0, 1, 2],
+        [0, 1, 3],
+        [0, 2, 3],
+        [1, 2, 3]
+    ]
+    mesh = Mesh(vertices, triangles)
+    
+    blocks = [
+        [[0.1, 0.1, 0.1], [0.3, 0.3, 0.3]]
+    ]
+    
+    # Compare uniform resolution with equivalent tuple
+    prop_uniform = block_proportions(mesh, blocks, method='inside', resolution=5)
+    prop_tuple = block_proportions(mesh, blocks, method='inside', resolution=(5, 5, 5))
+    
+    # Should be identical
+    np.testing.assert_array_equal(prop_uniform, prop_tuple)
+
+
 def test_block_proportions_invalid_method():
     """Test that invalid method raises error."""
     vertices = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
@@ -216,8 +272,17 @@ def test_block_proportions_invalid_resolution():
     
     blocks = [[[0, 0, 0], [1, 1, 1]]]
     
+    # Test invalid single value
     with pytest.raises(ValueError, match="resolution must be at least"):
         block_proportions(mesh, blocks, resolution=0)
+    
+    # Test invalid tuple length
+    with pytest.raises(ValueError, match="resolution tuple must have 3 elements"):
+        block_proportions(mesh, blocks, resolution=(5, 5))
+    
+    # Test invalid values in tuple
+    with pytest.raises(ValueError, match="all resolution values must be at least"):
+        block_proportions(mesh, blocks, resolution=(5, 0, 3))
 
 
 def test_block_proportions_invalid_shape():
