@@ -24,6 +24,8 @@ def points_in_mesh(mesh, points):
     a fixed direction and count how many times it intersects the mesh. If the
     count is odd, the point is inside; if even, it's outside.
     
+    Automatically uses BVH acceleration for meshes with more than 100 triangles.
+    
     Parameters
     ----------
     mesh : Mesh
@@ -57,11 +59,17 @@ def points_in_mesh(mesh, points):
     # Get all triangle vertices at once for vectorization
     tri_verts = mesh.get_all_triangle_vertices()  # shape: (n_triangles, 3, 3)
     
-    # Cast a ray in the +x direction from each point
-    # For each point, count intersections with triangles
-    for i, point in enumerate(points):
-        intersection_count = _count_ray_intersections(point, tri_verts)
-        inside[i] = (intersection_count % 2) == 1
+    # Use BVH acceleration if available
+    if mesh.bvh is not None:
+        for i, point in enumerate(points):
+            intersection_count = _count_ray_intersections_bvh(point, mesh.bvh)
+            inside[i] = (intersection_count % 2) == 1
+    else:
+        # Cast a ray in the +x direction from each point
+        # For each point, count intersections with triangles
+        for i, point in enumerate(points):
+            intersection_count = _count_ray_intersections(point, tri_verts)
+            inside[i] = (intersection_count % 2) == 1
     
     return inside
 
@@ -72,6 +80,8 @@ def points_below_mesh(mesh, points):
     
     A point is considered "below" if it has a smaller z-coordinate than
     the mesh surface directly above it (when projecting down the z-axis).
+    
+    Automatically uses BVH acceleration for meshes with more than 100 triangles.
     
     Parameters
     ----------
@@ -106,11 +116,18 @@ def points_below_mesh(mesh, points):
     # Get all triangle vertices
     tri_verts = mesh.get_all_triangle_vertices()  # shape: (n_triangles, 3, 3)
     
-    # For each point, cast a ray upward (+z direction) and find the closest intersection
-    for i, point in enumerate(points):
-        min_z_above = _find_closest_surface_above(point, tri_verts)
-        if min_z_above is not None:
-            below[i] = point[2] < min_z_above
+    # Use BVH acceleration if available
+    if mesh.bvh is not None:
+        for i, point in enumerate(points):
+            min_z_above = _find_closest_surface_above_bvh(point, mesh.bvh)
+            if min_z_above is not None:
+                below[i] = point[2] < min_z_above
+    else:
+        # For each point, cast a ray upward (+z direction) and find the closest intersection
+        for i, point in enumerate(points):
+            min_z_above = _find_closest_surface_above(point, tri_verts)
+            if min_z_above is not None:
+                below[i] = point[2] < min_z_above
     
     return below
 
@@ -276,3 +293,76 @@ def _find_closest_surface_above(point, tri_verts):
     
     min_t = np.min(t[valid_t])
     return ray_origin[2] + min_t
+
+
+def _count_ray_intersections_bvh(point, bvh):
+    """
+    Count ray intersections using BVH acceleration.
+    
+    Parameters
+    ----------
+    point : ndarray, shape (3,)
+        Origin of the ray.
+    bvh : BVH
+        BVH acceleration structure.
+    
+    Returns
+    -------
+    int
+        Number of intersections.
+    """
+    ray_origin = point
+    # Use a slightly perturbed ray direction to avoid hitting edges/vertices
+    ray_direction = np.array([1.0, RAY_PERTURBATION_Y, RAY_PERTURBATION_Z])
+    ray_direction = ray_direction / np.linalg.norm(ray_direction)
+    
+    # Collect all potentially intersecting triangle indices
+    candidate_indices = []
+    
+    def callback(triangle_indices):
+        candidate_indices.extend(triangle_indices)
+    
+    bvh.traverse_ray(ray_origin, ray_direction, callback)
+    
+    if not candidate_indices:
+        return 0
+    
+    # Test actual intersections with collected triangles
+    tri_verts = bvh.triangle_vertices[candidate_indices]
+    return _count_ray_intersections(point, tri_verts)
+
+
+def _find_closest_surface_above_bvh(point, bvh):
+    """
+    Find closest surface above point using BVH acceleration.
+    
+    Parameters
+    ----------
+    point : ndarray, shape (3,)
+        The query point.
+    bvh : BVH
+        BVH acceleration structure.
+    
+    Returns
+    -------
+    float or None
+        Z-coordinate of closest surface above, or None if no surface above.
+    """
+    ray_origin = point
+    ray_direction = np.array([0.0, 0.0, 1.0])  # +z direction
+    
+    # Collect all potentially intersecting triangle indices
+    candidate_indices = []
+    
+    def callback(triangle_indices):
+        candidate_indices.extend(triangle_indices)
+    
+    bvh.traverse_ray(ray_origin, ray_direction, callback)
+    
+    if not candidate_indices:
+        return None
+    
+    # Test actual intersections with collected triangles
+    tri_verts = bvh.triangle_vertices[candidate_indices]
+    return _find_closest_surface_above(point, tri_verts)
+

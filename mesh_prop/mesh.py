@@ -3,6 +3,12 @@ Core Mesh class for representing triangular meshes.
 """
 
 import numpy as np
+from .bvh import BVH
+
+
+# Threshold for auto-enabling BVH acceleration
+# Meshes with more triangles than this will automatically use BVH
+BVH_AUTO_THRESHOLD = 100
 
 
 class Mesh:
@@ -16,6 +22,10 @@ class Mesh:
     triangles : array_like, shape (n_triangles, 3)
         Array containing the indices of vertices for each triangle.
         Each row contains three indices into the vertices array.
+    use_bvh : bool or None, default=None
+        Whether to use BVH acceleration for ray-triangle intersection tests.
+        If None (default), automatically enables BVH for meshes with more
+        than 100 triangles. Set to True to force BVH, or False to disable.
     
     Attributes
     ----------
@@ -27,6 +37,8 @@ class Mesh:
         Number of vertices in the mesh.
     n_triangles : int
         Number of triangles in the mesh.
+    bvh : BVH or None
+        BVH acceleration structure if enabled, None otherwise.
     
     Examples
     --------
@@ -35,7 +47,7 @@ class Mesh:
     >>> mesh = Mesh(vertices, triangles)
     """
     
-    def __init__(self, vertices, triangles):
+    def __init__(self, vertices, triangles, use_bvh=None):
         """Initialize mesh with vertices and triangles."""
         self.vertices = np.asarray(vertices, dtype=np.float64)
         self.triangles = np.asarray(triangles, dtype=np.int32)
@@ -57,6 +69,15 @@ class Mesh:
         
         self.n_vertices = len(self.vertices)
         self.n_triangles = len(self.triangles)
+        
+        # Build BVH if requested or auto-enabled
+        self.bvh = None
+        if use_bvh is None:
+            use_bvh = self.n_triangles > BVH_AUTO_THRESHOLD
+        
+        if use_bvh and self.n_triangles > 0:
+            tri_verts = self.get_all_triangle_vertices()
+            self.bvh = BVH(tri_verts)
     
     def get_triangle_vertices(self, triangle_idx):
         """
