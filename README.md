@@ -99,19 +99,26 @@ print(below)  # [True, False]
 ```python
 from mesh_prop import block_proportions
 
-# Define blocks as pairs of opposite corners [min_corner, max_corner]
-# Each block is specified as [[x_min, y_min, z_min], [x_max, y_max, z_max]]
+# Define blocks by centroids and dimensions
+# Each block is [x_centroid, y_centroid, z_centroid, dx, dy, dz]
 blocks = [
-    [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],  # small block near origin
-    [[2.0, 2.0, 2.0], [3.0, 3.0, 3.0]],  # block far from mesh
+    [0.25, 0.25, 0.25, 0.5, 0.5, 0.5],  # centroid at (0.25, 0.25, 0.25), size 0.5×0.5×0.5
+    [2.5, 2.5, 2.5, 1.0, 1.0, 1.0],     # centroid at (2.5, 2.5, 2.5), size 1×1×1
 ]
 
 # Calculate proportions inside the mesh with uniform resolution
 proportions = block_proportions(mesh, blocks, method='inside', resolution=5)
-print(proportions)  # [0.8, 0.0] (80% inside, 0% inside)
+print(proportions)  # e.g., [0.8, 0.0] (80% inside, 0% inside)
 
 # Use different resolutions for each axis (x, y, z)
 proportions = block_proportions(mesh, blocks, method='inside', resolution=(10, 5, 3))
+
+# Alternative: use centroids only with common dimensions for all blocks
+blocks_centroids = [
+    [0.25, 0.25, 0.25],
+    [2.5, 2.5, 2.5],
+]
+proportions = block_proportions(mesh, blocks_centroids, dimensions=(0.5, 0.5, 0.5), resolution=5)
 
 # For open meshes, use method='below'
 proportions_below = block_proportions(plane, blocks, method='below', resolution=5)
@@ -170,16 +177,19 @@ Determine which points are below an open mesh surface.
 ### block_proportions
 
 ```python
-block_proportions(mesh, blocks, method='inside', resolution=5)
+block_proportions(mesh, blocks, method='inside', resolution=5, dimensions=None)
 ```
 
 Calculate what proportion of each block is inside or below a mesh.
 
 **Parameters:**
 - `mesh` (Mesh): The triangular mesh
-- `blocks` (array_like): Shape (n_blocks, 2, 3). Each block defined by [[x_min, y_min, z_min], [x_max, y_max, z_max]]
+- `blocks` (array_like): Shape (n_blocks, 3) or (n_blocks, 6). Blocks defined by centroids and dimensions.
+  - If shape is (n_blocks, 3): Each row is [x_centroid, y_centroid, z_centroid]. Requires `dimensions` parameter.
+  - If shape is (n_blocks, 6): Each row is [x_centroid, y_centroid, z_centroid, dx, dy, dz].
 - `method` (str): Either 'inside' or 'below'. Default: 'inside'
 - `resolution` (int or tuple): Number of sample points per dimension. Can be a single int for uniform resolution or a tuple (res_x, res_y, res_z) for different resolutions per axis. Default: 5
+- `dimensions` (tuple, optional): Default dimensions (dx, dy, dz) for all blocks when blocks has 3 columns. If provided with 6-column blocks, this overrides individual dimensions and emits a warning. Default: None
 
 **Returns:**
 - `ndarray`: Shape (n_blocks,), dtype=float. Proportion in range [0.0, 1.0]

@@ -106,27 +106,40 @@ def example_block_proportions():
     mesh = Mesh(vertices, triangles)
     print(f"Created mesh: {mesh}")
     
-    # Define several blocks
+    # Define several blocks using centroids and dimensions
+    # Format: [x_centroid, y_centroid, z_centroid, dx, dy, dz]
     blocks = [
-        [[0.0, 0.0, 0.0], [0.5, 0.5, 0.5]],   # near origin, mostly inside
-        [[0.5, 0.5, 0.5], [1.0, 1.0, 1.0]],   # middle, partially inside
-        [[1.5, 1.5, 1.5], [2.0, 2.0, 2.0]],   # far corner, mostly outside
-        [[3.0, 3.0, 3.0], [4.0, 4.0, 4.0]],   # completely outside
+        [0.25, 0.25, 0.25, 0.5, 0.5, 0.5],   # near origin, mostly inside
+        [0.75, 0.75, 0.75, 0.5, 0.5, 0.5],   # middle, partially inside
+        [1.75, 1.75, 1.75, 0.5, 0.5, 0.5],   # far corner, mostly outside
+        [3.5, 3.5, 3.5, 1.0, 1.0, 1.0],      # completely outside
     ]
     
     # Calculate proportions with different resolutions
     print("\nBlock proportions (method='inside'):")
+    print("Blocks defined as [x_centroid, y_centroid, z_centroid, dx, dy, dz]")
     for resolution in [3, 5, 10]:
         proportions = block_proportions(mesh, blocks, method='inside', resolution=resolution)
         print(f"\n  Uniform resolution={resolution}:")
         for i, (block, prop) in enumerate(zip(blocks, proportions)):
-            print(f"    Block {i} {block[0]} -> {block[1]}: {prop:.2%}")
+            print(f"    Block {i} centroid=({block[0]}, {block[1]}, {block[2]}) dims=({block[3]}, {block[4]}, {block[5]}): {prop:.2%}")
     
     # Calculate with tuple resolution (different per axis)
     print("\n  Tuple resolution=(10, 5, 3) [high x, medium y, low z]:")
     proportions = block_proportions(mesh, blocks, method='inside', resolution=(10, 5, 3))
     for i, (block, prop) in enumerate(zip(blocks, proportions)):
-        print(f"    Block {i} {block[0]} -> {block[1]}: {prop:.2%}")
+        print(f"    Block {i} centroid=({block[0]}, {block[1]}, {block[2]}) dims=({block[3]}, {block[4]}, {block[5]}): {prop:.2%}")
+    
+    # Example using centroids only with dimensions parameter
+    print("\n  Using centroids only with dimensions parameter:")
+    blocks_centroids = [
+        [0.25, 0.25, 0.25],
+        [0.75, 0.75, 0.75],
+        [1.75, 1.75, 1.75],
+    ]
+    proportions = block_proportions(mesh, blocks_centroids, dimensions=(0.5, 0.5, 0.5), method='inside', resolution=5)
+    for i, (block, prop) in enumerate(zip(blocks_centroids, proportions)):
+        print(f"    Block {i} centroid=({block[0]}, {block[1]}, {block[2]}) dims=(0.5, 0.5, 0.5): {prop:.2%}")
 
 
 def example_cube():
@@ -167,10 +180,11 @@ def example_cube():
     
     # Test block proportion
     blocks = [
-        [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]],  # entirely inside
+        [0.5, 0.5, 0.5, 0.5, 0.5, 0.5],  # entirely inside - centroid (0.5, 0.5, 0.5), dims (0.5, 0.5, 0.5)
     ]
     proportions = block_proportions(mesh, blocks, method='inside', resolution=5)
-    print(f"\nBlock [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]]: {proportions[0]:.2%} inside")
+    print(f"\nBlock centroid=(0.5, 0.5, 0.5) dims=(0.5, 0.5, 0.5): {proportions[0]:.2%} inside")
+
 
 
 def main():

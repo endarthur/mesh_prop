@@ -4,6 +4,7 @@ Tests for block proportion calculations.
 
 import pytest
 import numpy as np
+import warnings
 from mesh_prop import Mesh, block_proportions
 
 
@@ -23,9 +24,9 @@ def test_block_proportions_simple_inside():
     ]
     mesh = Mesh(vertices, triangles)
     
-    # Block entirely inside (near origin)
+    # Block entirely inside (near origin) - centroid at (0.1, 0.1, 0.1) with dims (0.1, 0.1, 0.1)
     blocks = [
-        [[0.05, 0.05, 0.05], [0.15, 0.15, 0.15]]
+        [0.1, 0.1, 0.1, 0.1, 0.1, 0.1]
     ]
     
     proportions = block_proportions(mesh, blocks, method='inside', resolution=3)
@@ -50,9 +51,9 @@ def test_block_proportions_simple_outside():
     ]
     mesh = Mesh(vertices, triangles)
     
-    # Block entirely outside
+    # Block entirely outside - centroid at (2.5, 2.5, 2.5) with dims (1, 1, 1)
     blocks = [
-        [[2, 2, 2], [3, 3, 3]]
+        [2.5, 2.5, 2.5, 1, 1, 1]
     ]
     
     proportions = block_proportions(mesh, blocks, method='inside', resolution=3)
@@ -78,8 +79,8 @@ def test_block_proportions_multiple_blocks():
     mesh = Mesh(vertices, triangles)
     
     blocks = [
-        [[0.05, 0.05, 0.05], [0.15, 0.15, 0.15]],  # inside
-        [[2, 2, 2], [3, 3, 3]]                      # outside
+        [0.1, 0.1, 0.1, 0.1, 0.1, 0.1],  # inside - centroid (0.1, 0.1, 0.1), dims (0.1, 0.1, 0.1)
+        [2.5, 2.5, 2.5, 1, 1, 1]          # outside
     ]
     
     proportions = block_proportions(mesh, blocks, method='inside', resolution=3)
@@ -103,9 +104,9 @@ def test_block_proportions_below_plane():
     ]
     mesh = Mesh(vertices, triangles)
     
-    # Block entirely below the plane
+    # Block entirely below the plane - centroid (1, 1, 0.25) with dims (1, 1, 0.5)
     blocks = [
-        [[0.5, 0.5, 0], [1.5, 1.5, 0.5]]
+        [1, 1, 0.25, 1, 1, 0.5]
     ]
     
     proportions = block_proportions(mesh, blocks, method='below', resolution=3)
@@ -129,9 +130,9 @@ def test_block_proportions_above_plane():
     ]
     mesh = Mesh(vertices, triangles)
     
-    # Block entirely above the plane
+    # Block entirely above the plane - centroid (1, 1, 1.75) with dims (1, 1, 0.5)
     blocks = [
-        [[0.5, 0.5, 1.5], [1.5, 1.5, 2]]
+        [1, 1, 1.75, 1, 1, 0.5]
     ]
     
     proportions = block_proportions(mesh, blocks, method='below', resolution=3)
@@ -157,9 +158,9 @@ def test_block_proportions_partial():
     ]
     mesh = Mesh(vertices, triangles)
     
-    # Block that straddles the mesh boundary
+    # Block that straddles the mesh boundary - centroid (0.6, 0.6, 0.6) with dims (0.4, 0.4, 0.4)
     blocks = [
-        [[0.4, 0.4, 0.4], [0.8, 0.8, 0.8]]
+        [0.6, 0.6, 0.6, 0.4, 0.4, 0.4]
     ]
     
     proportions = block_proportions(mesh, blocks, method='inside', resolution=5)
@@ -185,7 +186,7 @@ def test_block_proportions_resolution():
     mesh = Mesh(vertices, triangles)
     
     blocks = [
-        [[0.1, 0.1, 0.1], [0.4, 0.4, 0.4]]
+        [0.25, 0.25, 0.25, 0.3, 0.3, 0.3]
     ]
     
     prop_low = block_proportions(mesh, blocks, method='inside', resolution=2)
@@ -212,9 +213,9 @@ def test_block_proportions_tuple_resolution():
     ]
     mesh = Mesh(vertices, triangles)
     
-    # Block inside
+    # Block inside - centroid (0.2, 0.2, 0.2) with dims (0.2, 0.2, 0.2)
     blocks = [
-        [[0.1, 0.1, 0.1], [0.3, 0.3, 0.3]]
+        [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
     ]
     
     # Test with tuple resolution (high x, low y, medium z)
@@ -241,7 +242,7 @@ def test_block_proportions_tuple_vs_uniform_resolution():
     mesh = Mesh(vertices, triangles)
     
     blocks = [
-        [[0.1, 0.1, 0.1], [0.3, 0.3, 0.3]]
+        [0.2, 0.2, 0.2, 0.2, 0.2, 0.2]
     ]
     
     # Compare uniform resolution with equivalent tuple
@@ -252,13 +253,54 @@ def test_block_proportions_tuple_vs_uniform_resolution():
     np.testing.assert_array_equal(prop_uniform, prop_tuple)
 
 
+def test_block_proportions_with_dimensions_parameter():
+    """Test block proportions using dimensions parameter with 3-column blocks."""
+    vertices = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    triangles = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
+    mesh = Mesh(vertices, triangles)
+    
+    # Blocks with centroids only (3 columns)
+    blocks = [
+        [0.2, 0.2, 0.2],
+        [0.75, 0.75, 0.75]
+    ]
+    
+    # Use dimensions parameter
+    proportions = block_proportions(mesh, blocks, dimensions=(0.2, 0.2, 0.2), method='inside', resolution=5)
+    
+    assert proportions[0] > 0.5  # mostly inside
+    assert proportions[1] < 0.5  # mostly outside
+
+
+def test_block_proportions_dimensions_override_warning():
+    """Test that warning is emitted when dimensions parameter overrides 6-column blocks."""
+    vertices = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    triangles = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
+    mesh = Mesh(vertices, triangles)
+    
+    # Blocks with 6 columns (centroid + dimensions)
+    blocks = [
+        [0.2, 0.2, 0.2, 0.1, 0.1, 0.1]  # These dimensions will be ignored
+    ]
+    
+    # Provide dimensions parameter which should override
+    with warnings.catch_warnings(record=True) as w:
+        warnings.simplefilter("always")
+        proportions = block_proportions(mesh, blocks, dimensions=(0.2, 0.2, 0.2), method='inside', resolution=5)
+        
+        # Check warning was issued
+        assert len(w) == 1
+        assert "dimensions parameter" in str(w[0].message)
+        assert proportions[0] > 0.5  # Using dimensions=(0.2, 0.2, 0.2) not (0.1, 0.1, 0.1)
+
+
 def test_block_proportions_invalid_method():
     """Test that invalid method raises error."""
     vertices = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
     triangles = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
     mesh = Mesh(vertices, triangles)
     
-    blocks = [[[0, 0, 0], [1, 1, 1]]]
+    blocks = [[0, 0, 0, 1, 1, 1]]
     
     with pytest.raises(ValueError, match="method must be"):
         block_proportions(mesh, blocks, method='invalid')
@@ -270,7 +312,7 @@ def test_block_proportions_invalid_resolution():
     triangles = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
     mesh = Mesh(vertices, triangles)
     
-    blocks = [[[0, 0, 0], [1, 1, 1]]]
+    blocks = [[0.5, 0.5, 0.5, 1, 1, 1]]
     
     # Test invalid single value
     with pytest.raises(ValueError, match="resolution must be at least"):
@@ -291,10 +333,34 @@ def test_block_proportions_invalid_shape():
     triangles = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
     mesh = Mesh(vertices, triangles)
     
-    invalid_blocks = [[[0, 0, 0]]]  # Missing second corner
+    # Test invalid column count
+    invalid_blocks = [[0, 0, 0, 1]]  # 4 columns instead of 3 or 6
     
-    with pytest.raises(ValueError, match="blocks must have shape"):
+    with pytest.raises(ValueError, match="blocks must have 3 or 6 columns"):
         block_proportions(mesh, invalid_blocks)
+    
+    # Test 3 columns without dimensions parameter
+    blocks_3col = [[0, 0, 0]]
+    
+    with pytest.raises(ValueError, match="dimensions parameter is required"):
+        block_proportions(mesh, blocks_3col)
+
+
+def test_block_proportions_invalid_dimensions():
+    """Test that invalid dimensions parameter raises error."""
+    vertices = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    triangles = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
+    mesh = Mesh(vertices, triangles)
+    
+    blocks = [[0.5, 0.5, 0.5]]
+    
+    # Test invalid tuple length
+    with pytest.raises(ValueError, match="dimensions must be a tuple/list of 3 floats"):
+        block_proportions(mesh, blocks, dimensions=(1, 1))
+    
+    # Test invalid values (non-positive)
+    with pytest.raises(ValueError, match="all dimension values must be positive"):
+        block_proportions(mesh, blocks, dimensions=(1, 0, 1))
 
 
 def test_block_proportions_cube():
@@ -321,9 +387,9 @@ def test_block_proportions_cube():
     ]
     mesh = Mesh(vertices, triangles)
     
-    # Block inside the cube
+    # Block inside the cube - centroid (0.5, 0.5, 0.5) with dims (0.5, 0.5, 0.5)
     blocks = [
-        [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]]
+        [0.5, 0.5, 0.5, 0.5, 0.5, 0.5]
     ]
     
     proportions = block_proportions(mesh, blocks, method='inside', resolution=5)

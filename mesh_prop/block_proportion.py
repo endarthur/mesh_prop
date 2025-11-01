@@ -2,11 +2,12 @@
 Block proportion calculations for determining what portion of blocks are inside/below a mesh.
 """
 
+import warnings
 import numpy as np
 from .point_selection import points_in_mesh, points_below_mesh
 
 
-def block_proportions(mesh, blocks, method='inside', resolution=5):
+def block_proportions(mesh, blocks, method='inside', resolution=5, dimensions=None):
     """
     Calculate what proportion of each block is inside or below a mesh.
     
@@ -18,12 +19,13 @@ def block_proportions(mesh, blocks, method='inside', resolution=5):
     ----------
     mesh : Mesh
         The triangular mesh.
-    blocks : array_like, shape (n_blocks, 2, 3)
-        Array defining blocks as pairs of opposite corners.
-        blocks[i, 0] is the minimum (x, y, z) corner of block i.
-        blocks[i, 1] is the maximum (x, y, z) corner of block i.
-        Each block is defined by two 3D points: [min_corner, max_corner] where
-        min_corner = [x_min, y_min, z_min] and max_corner = [x_max, y_max, z_max].
+    blocks : array_like, shape (n_blocks, 3) or (n_blocks, 6)
+        Array defining blocks by their centroids and dimensions.
+        - If shape is (n_blocks, 3): blocks[i] = [x_centroid, y_centroid, z_centroid].
+          In this case, `dimensions` parameter must be provided.
+        - If shape is (n_blocks, 6): blocks[i] = [x_centroid, y_centroid, z_centroid, dx, dy, dz].
+        Each block is a rectangular box centered at (x_centroid, y_centroid, z_centroid)
+        with dimensions dx, dy, dz along x, y, z axes respectively.
     method : str, optional
         Either 'inside' (for closed meshes) or 'below' (for open meshes).
         Default is 'inside'.
@@ -33,6 +35,10 @@ def block_proportions(mesh, blocks, method='inside', resolution=5):
         If tuple (res_x, res_y, res_z), uses different resolutions per axis.
         Higher values give more accurate proportions but are slower.
         Default is 5 (125 points per block with uniform resolution).
+    dimensions : tuple of 3 floats, optional
+        Default dimensions (dx, dy, dz) for all blocks when blocks has shape (n_blocks, 3).
+        If provided with 6-column blocks, this parameter takes precedence and a warning is emitted.
+        Default is None.
     
     Returns
     -------
@@ -44,19 +50,63 @@ def block_proportions(mesh, blocks, method='inside', resolution=5):
     >>> vertices = [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
     >>> triangles = [[0, 1, 2], [0, 1, 3], [0, 2, 3], [1, 2, 3]]
     >>> mesh = Mesh(vertices, triangles)
-    >>> # Single block with uniform resolution
-    >>> blocks = [[[0, 0, 0], [0.5, 0.5, 0.5]]]
-    >>> proportions = block_proportions(mesh, blocks, method='inside', resolution=3)
-    >>> # Multiple blocks with different resolution per axis
-    >>> blocks = [[[0, 0, 0], [0.5, 0.5, 0.5]], [[0.5, 0.5, 0.5], [1, 1, 1]]]
-    >>> proportions = block_proportions(mesh, blocks, resolution=(5, 3, 7))
+    >>> # Blocks with centroids and individual dimensions
+    >>> blocks = [[0.25, 0.25, 0.25, 0.5, 0.5, 0.5], [0.75, 0.75, 0.75, 0.5, 0.5, 0.5]]
+    >>> proportions = block_proportions(mesh, blocks, method='inside', resolution=5)
+    >>> # Blocks with centroids only, using common dimensions
+    >>> blocks = [[0.25, 0.25, 0.25], [0.75, 0.75, 0.75]]
+    >>> proportions = block_proportions(mesh, blocks, dimensions=(0.5, 0.5, 0.5), resolution=5)
+    >>> # Different resolution per axis
+    >>> proportions = block_proportions(mesh, blocks, dimensions=(0.5, 0.5, 0.5), resolution=(10, 5, 3))
     """
     blocks = np.asarray(blocks, dtype=np.float64)
     
-    if blocks.ndim != 3 or blocks.shape[1:] != (2, 3):
+    if blocks.ndim != 2:
         raise ValueError(
-            f"blocks must have shape (n_blocks, 2, 3), got {blocks.shape}"
+            f"blocks must be a 2D array, got shape {blocks.shape}"
         )
+    
+    n_blocks, n_cols = blocks.shape
+    
+    if n_cols not in (3, 6):
+        raise ValueError(
+            f"blocks must have 3 or 6 columns, got {n_cols} columns"
+        )
+    
+    # Handle dimensions parameter
+    if n_cols == 6 and dimensions is not None:
+        warnings.warn(
+            "Both 6-column blocks (with individual dimensions) and dimensions parameter provided. "
+            "Using dimensions parameter and ignoring the last 3 columns of blocks.",
+            UserWarning
+        )
+        use_dimensions = dimensions
+        centroids = blocks[:, :3]
+    elif n_cols == 6:
+        # Use individual dimensions from blocks
+        use_dimensions = None
+        centroids = blocks[:, :3]
+        individual_dims = blocks[:, 3:6]
+    elif n_cols == 3:
+        # Must have dimensions parameter
+        if dimensions is None:
+            raise ValueError(
+                "dimensions parameter is required when blocks has 3 columns (centroids only)"
+            )
+        use_dimensions = dimensions
+        centroids = blocks
+    
+    # Validate dimensions parameter if provided
+    if use_dimensions is not None:
+        if not isinstance(use_dimensions, (list, tuple)) or len(use_dimensions) != 3:
+            raise ValueError(
+                f"dimensions must be a tuple/list of 3 floats (dx, dy, dz), got {use_dimensions}"
+            )
+        dx, dy, dz = use_dimensions
+        if dx <= 0 or dy <= 0 or dz <= 0:
+            raise ValueError(
+                f"all dimension values must be positive, got {use_dimensions}"
+            )
     
     if method not in ('inside', 'below'):
         raise ValueError(f"method must be 'inside' or 'below', got {method}")
@@ -78,12 +128,21 @@ def block_proportions(mesh, blocks, method='inside', resolution=5):
             raise ValueError(f"resolution must be at least 1, got {resolution}")
         resolution_tuple = (int(resolution), int(resolution), int(resolution))
     
-    n_blocks = len(blocks)
     proportions = np.zeros(n_blocks, dtype=np.float64)
     
     # Generate sample points for each block
-    for i, block in enumerate(blocks):
-        min_corner, max_corner = block
+    for i in range(n_blocks):
+        centroid = centroids[i]
+        
+        # Get dimensions for this block
+        if use_dimensions is not None:
+            block_dims = use_dimensions
+        else:
+            block_dims = individual_dims[i]
+        
+        # Convert centroid and dimensions to min/max corners
+        min_corner = centroid - np.array(block_dims) / 2.0
+        max_corner = centroid + np.array(block_dims) / 2.0
         
         # Create a grid of sample points
         sample_points = _generate_block_samples(min_corner, max_corner, resolution_tuple)
