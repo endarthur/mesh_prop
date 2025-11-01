@@ -12,10 +12,18 @@ class TestBVHBasic:
     
     def test_bvh_auto_enabled_large_mesh(self):
         """BVH should auto-enable for meshes with > 100 triangles."""
-        # Create a large mesh (e.g., 150 triangles)
-        n_triangles = 150
-        vertices = np.random.rand(n_triangles * 3, 3)
-        triangles = np.arange(n_triangles * 3).reshape(n_triangles, 3)
+        # Create a mesh with 150 triangles by subdividing a cube
+        np.random.seed(42)
+        vertices = []
+        triangles = []
+        
+        # Create random triangles with random vertices
+        for i in range(150):
+            # Each triangle gets 3 unique random vertices
+            v_base = len(vertices)
+            for j in range(3):
+                vertices.append(np.random.rand(3))
+            triangles.append([v_base, v_base + 1, v_base + 2])
         
         mesh = Mesh(vertices, triangles)
         assert mesh.bvh is not None, "BVH should auto-enable for 150 triangles"
@@ -38,9 +46,16 @@ class TestBVHBasic:
     
     def test_bvh_forced_disable(self):
         """BVH can be disabled even for large meshes."""
-        n_triangles = 150
-        vertices = np.random.rand(n_triangles * 3, 3)
-        triangles = np.arange(n_triangles * 3).reshape(n_triangles, 3)
+        np.random.seed(42)
+        vertices = []
+        triangles = []
+        
+        # Create 150 random triangles
+        for i in range(150):
+            v_base = len(vertices)
+            for j in range(3):
+                vertices.append(np.random.rand(3))
+            triangles.append([v_base, v_base + 1, v_base + 2])
         
         mesh = Mesh(vertices, triangles, use_bvh=False)
         assert mesh.bvh is None, "BVH should be disabled"
@@ -92,10 +107,14 @@ class TestBVHCorrectness:
         """BVH should give same results as non-BVH for large random mesh."""
         np.random.seed(42)
         
-        # Create a random mesh
-        n_triangles = 200
-        vertices = np.random.rand(n_triangles * 3, 3) * 10
-        triangles = np.arange(n_triangles * 3).reshape(n_triangles, 3)
+        # Create a random mesh with 200 triangles
+        vertices = []
+        triangles = []
+        for i in range(200):
+            v_base = len(vertices)
+            for j in range(3):
+                vertices.append(np.random.rand(3) * 10)
+            triangles.append([v_base, v_base + 1, v_base + 2])
         
         mesh_with_bvh = Mesh(vertices, triangles, use_bvh=True)
         mesh_without_bvh = Mesh(vertices, triangles, use_bvh=False)
@@ -114,9 +133,14 @@ class TestBVHPerformance:
     
     def test_bvh_stats(self):
         """BVH stats should be reasonable."""
-        n_triangles = 200
-        vertices = np.random.rand(n_triangles * 3, 3)
-        triangles = np.arange(n_triangles * 3).reshape(n_triangles, 3)
+        np.random.seed(42)
+        vertices = []
+        triangles = []
+        for i in range(200):
+            v_base = len(vertices)
+            for j in range(3):
+                vertices.append(np.random.rand(3))
+            triangles.append([v_base, v_base + 1, v_base + 2])
         
         mesh = Mesh(vertices, triangles, use_bvh=True)
         stats = mesh.bvh.get_stats()
@@ -141,10 +165,14 @@ class TestBVHPerformance:
         
         np.random.seed(42)
         
-        # Create a large mesh
-        n_triangles = 500
-        vertices = np.random.rand(n_triangles * 3, 3) * 10
-        triangles = np.arange(n_triangles * 3).reshape(n_triangles, 3)
+        # Create a mesh with 500 triangles
+        vertices = []
+        triangles = []
+        for i in range(500):
+            v_base = len(vertices)
+            for j in range(3):
+                vertices.append(np.random.rand(3) * 10)
+            triangles.append([v_base, v_base + 1, v_base + 2])
         
         mesh_with_bvh = Mesh(vertices, triangles, use_bvh=True)
         mesh_without_bvh = Mesh(vertices, triangles, use_bvh=False)
