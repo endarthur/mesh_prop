@@ -11,7 +11,7 @@ import numpy as np
 import warnings
 
 
-def grid_proportions(mesh, origin, dimensions, n_blocks, method='below', axis='z'):
+def grid_proportions(mesh, origin, dimensions, n_blocks, method='below', axis='z', mask=None):
     """
     Calculate proportions for a dense regular grid of blocks (optimized for resource modeling).
     
@@ -41,12 +41,18 @@ def grid_proportions(mesh, origin, dimensions, n_blocks, method='below', axis='z
         Axis perpendicular to the 2D grid plane: 'x', 'y', or 'z'.
         Default is 'z' (grid in xy-plane, heights along z-axis).
         This should be chosen based on the mesh orientation for best results.
+    mask : array_like, shape (nx, ny, nz), dtype=bool, optional
+        Boolean mask indicating which blocks to calculate proportions for.
+        If provided, only blocks where mask[i, j, k] is True will be computed,
+        and masked-out blocks will have proportion 0.0. This can significantly
+        reduce computation time for sparse grids. Default is None (calculate all blocks).
     
     Returns
     -------
     ndarray, shape (nx, ny, nz), dtype=float
         3D array of proportions for each block, ranging from 0.0 to 1.0.
         Indexed as proportions[i, j, k] for block at position (i, j, k).
+        Blocks where mask is False (if mask provided) will have proportion 0.0.
     
     Examples
     --------
@@ -61,17 +67,24 @@ def grid_proportions(mesh, origin, dimensions, n_blocks, method='below', axis='z
     >>> n_blocks = [10, 10, 5]
     >>> proportions = grid_proportions(mesh, origin, dimensions, n_blocks, method='below')
     >>> # proportions shape: (10, 10, 5)
+    >>> 
+    >>> # With a mask to compute only specific blocks
+    >>> mask = np.zeros((10, 10, 5), dtype=bool)
+    >>> mask[5:, 5:, :] = True  # Only compute upper-right quadrant
+    >>> proportions = grid_proportions(mesh, origin, dimensions, n_blocks, method='below', mask=mask)
     
     Notes
     -----
     Performance characteristics:
     - Grid rendering: O(grid_cells × triangles)
-    - Block proportion calculation: O(total_blocks)
+    - Block proportion calculation: O(total_blocks) or O(masked_blocks) with mask
     - Much faster than block_proportions() for dense grids (100-1000× speedup)
     
     For a 100×100×50 grid (500K blocks):
     - grid_proportions(): Renders 100×100 grid once, then O(1) per block
     - block_proportions(): Queries mesh for each of 500K blocks independently
+    
+    Using a mask can further improve performance by skipping unnecessary blocks.
     """
     # Validate inputs
     origin = np.asarray(origin, dtype=np.float64)
@@ -95,6 +108,15 @@ def grid_proportions(mesh, origin, dimensions, n_blocks, method='below', axis='z
     if axis not in ('x', 'y', 'z'):
         raise ValueError(f"axis must be 'x', 'y', or 'z', got {axis}")
     
+    # Validate mask if provided
+    if mask is not None:
+        mask = np.asarray(mask, dtype=bool)
+        expected_shape = tuple(n_blocks)
+        if mask.shape != expected_shape:
+            raise ValueError(
+                f"mask shape {mask.shape} does not match n_blocks {expected_shape}"
+            )
+    
     # Map axis to index
     axis_map = {'x': 0, 'y': 1, 'z': 2}
     axis_idx = axis_map[axis]
@@ -102,29 +124,41 @@ def grid_proportions(mesh, origin, dimensions, n_blocks, method='below', axis='z
     # Get the two perpendicular axes
     perp_axes = [i for i in range(3) if i != axis_idx]
     
+    # Project mask to 2D if provided (to optimize rendering)
+    mask_2d = None
+    if mask is not None:
+        # Project mask onto 2D grid perpendicular to axis
+        # A 2D grid point needs computation if any block along that column is masked True
+        if axis_idx == 0:  # x-axis
+            mask_2d = np.any(mask, axis=0)  # Project along x
+        elif axis_idx == 1:  # y-axis
+            mask_2d = np.any(mask, axis=1)  # Project along y
+        else:  # z-axis
+            mask_2d = np.any(mask, axis=2)  # Project along z
+    
     # Render mesh to 2D height map
     if method == 'below':
         height_map = _render_surface_height_map(
-            mesh, origin, dimensions, n_blocks, axis_idx
+            mesh, origin, dimensions, n_blocks, axis_idx, mask_2d
         )
         # Calculate proportions based on height map
         proportions = _calculate_proportions_below(
-            height_map, origin, dimensions, n_blocks, axis_idx
+            height_map, origin, dimensions, n_blocks, axis_idx, mask
         )
     else:  # method == 'inside'
         # For closed meshes, render both top and bottom surfaces
         bottom_map, top_map = _render_closed_mesh_height_maps(
-            mesh, origin, dimensions, n_blocks, axis_idx
+            mesh, origin, dimensions, n_blocks, axis_idx, mask_2d
         )
         # Calculate proportions based on both height maps
         proportions = _calculate_proportions_inside(
-            bottom_map, top_map, origin, dimensions, n_blocks, axis_idx
+            bottom_map, top_map, origin, dimensions, n_blocks, axis_idx, mask
         )
     
     return proportions
 
 
-def _render_surface_height_map(mesh, origin, dimensions, n_blocks, axis_idx):
+def _render_surface_height_map(mesh, origin, dimensions, n_blocks, axis_idx, mask_2d=None):
     """
     Render mesh to a 2D height map showing surface height at each grid point.
     
@@ -142,12 +176,14 @@ def _render_surface_height_map(mesh, origin, dimensions, n_blocks, axis_idx):
         Number of blocks along each axis.
     axis_idx : int
         Index of the axis perpendicular to the grid (0=x, 1=y, 2=z).
+    mask_2d : ndarray, shape (n_perp1, n_perp2), dtype=bool, optional
+        2D mask indicating which grid points need rendering. If None, render all points.
     
     Returns
     -------
     ndarray, shape (n_perp1, n_perp2)
         Height map with surface heights at each grid point.
-        NaN indicates no surface found at that point.
+        NaN indicates no surface found at that point or masked out point.
     """
     # Get perpendicular axis indices
     perp_axes = [i for i in range(3) if i != axis_idx]
@@ -172,6 +208,10 @@ def _render_surface_height_map(mesh, origin, dimensions, n_blocks, axis_idx):
     # For each grid point, cast a ray along the axis direction to find surface
     for i in range(n_perp1):
         for j in range(n_perp2):
+            # Skip if masked out
+            if mask_2d is not None and not mask_2d[i, j]:
+                continue
+            
             # Create ray origin at this grid point
             ray_origin = np.zeros(3)
             ray_origin[perp1_idx] = perp1_grid[i, j]
@@ -192,7 +232,7 @@ def _render_surface_height_map(mesh, origin, dimensions, n_blocks, axis_idx):
     return height_map
 
 
-def _render_closed_mesh_height_maps(mesh, origin, dimensions, n_blocks, axis_idx):
+def _render_closed_mesh_height_maps(mesh, origin, dimensions, n_blocks, axis_idx, mask_2d=None):
     """
     Render closed mesh to 2D height maps showing bottom and top surfaces.
     
@@ -208,6 +248,8 @@ def _render_closed_mesh_height_maps(mesh, origin, dimensions, n_blocks, axis_idx
         Number of blocks along each axis.
     axis_idx : int
         Index of the axis perpendicular to the grid (0=x, 1=y, 2=z).
+    mask_2d : ndarray, shape (n_perp1, n_perp2), dtype=bool, optional
+        2D mask indicating which grid points need rendering. If None, render all points.
     
     Returns
     -------
@@ -239,6 +281,10 @@ def _render_closed_mesh_height_maps(mesh, origin, dimensions, n_blocks, axis_idx
     # For each grid point, find min and max heights (bottom and top of closed mesh)
     for i in range(n_perp1):
         for j in range(n_perp2):
+            # Skip if masked out
+            if mask_2d is not None and not mask_2d[i, j]:
+                continue
+            
             # Create ray origin
             ray_origin = np.zeros(3)
             ray_origin[perp1_idx] = perp1_grid[i, j]
@@ -347,7 +393,7 @@ def _find_all_surface_heights(ray_origin, ray_direction, tri_verts, axis_idx):
     return heights
 
 
-def _calculate_proportions_below(height_map, origin, dimensions, n_blocks, axis_idx):
+def _calculate_proportions_below(height_map, origin, dimensions, n_blocks, axis_idx, mask=None):
     """
     Calculate block proportions below a surface from a height map.
     
@@ -363,6 +409,8 @@ def _calculate_proportions_below(height_map, origin, dimensions, n_blocks, axis_
         Number of blocks along each axis.
     axis_idx : int
         Index of the axis perpendicular to the grid.
+    mask : ndarray, shape (nx, ny, nz), dtype=bool, optional
+        3D mask indicating which blocks to calculate. If None, calculate all blocks.
     
     Returns
     -------
@@ -386,6 +434,18 @@ def _calculate_proportions_below(height_map, origin, dimensions, n_blocks, axis_
         # For each grid point in the perpendicular plane
         for i in range(n_blocks[perp1_idx]):
             for j in range(n_blocks[perp2_idx]):
+                # Determine 3D indices based on axis orientation
+                if axis_idx == 0:  # x-axis
+                    idx_3d = (k, i, j)
+                elif axis_idx == 1:  # y-axis
+                    idx_3d = (i, k, j)
+                else:  # z-axis
+                    idx_3d = (i, j, k)
+                
+                # Skip if masked out
+                if mask is not None and not mask[idx_3d]:
+                    continue
+                
                 surface_height = height_map[i, j]
                 
                 # Calculate proportion below surface
@@ -413,7 +473,7 @@ def _calculate_proportions_below(height_map, origin, dimensions, n_blocks, axis_
     return proportions
 
 
-def _calculate_proportions_inside(bottom_map, top_map, origin, dimensions, n_blocks, axis_idx):
+def _calculate_proportions_inside(bottom_map, top_map, origin, dimensions, n_blocks, axis_idx, mask=None):
     """
     Calculate block proportions inside a closed mesh from bottom and top height maps.
     
@@ -431,6 +491,8 @@ def _calculate_proportions_inside(bottom_map, top_map, origin, dimensions, n_blo
         Number of blocks along each axis.
     axis_idx : int
         Index of the axis perpendicular to the grid.
+    mask : ndarray, shape (nx, ny, nz), dtype=bool, optional
+        3D mask indicating which blocks to calculate. If None, calculate all blocks.
     
     Returns
     -------
@@ -453,6 +515,18 @@ def _calculate_proportions_inside(bottom_map, top_map, origin, dimensions, n_blo
         # For each grid point in the perpendicular plane
         for i in range(n_blocks[perp1_idx]):
             for j in range(n_blocks[perp2_idx]):
+                # Determine 3D indices based on axis orientation
+                if axis_idx == 0:  # x-axis
+                    idx_3d = (k, i, j)
+                elif axis_idx == 1:  # y-axis
+                    idx_3d = (i, k, j)
+                else:  # z-axis
+                    idx_3d = (i, j, k)
+                
+                # Skip if masked out
+                if mask is not None and not mask[idx_3d]:
+                    continue
+                
                 bottom_height = bottom_map[i, j]
                 top_height = top_map[i, j]
                 

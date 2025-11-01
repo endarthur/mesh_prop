@@ -2,7 +2,7 @@
 
 import numpy as np
 import pytest
-from mesh_prop import Mesh, grid_proportions
+from mesh_prop import Mesh, grid_proportions, block_proportions
 
 
 class TestGridProportions:
@@ -261,3 +261,180 @@ class TestGridProportionsPerformance:
         
         print(f"\nPerformance: {len(proportions.ravel())} blocks in {elapsed:.3f}s "
               f"({len(proportions.ravel())/elapsed:.0f} blocks/sec)")
+
+
+class TestGridProportionsMask:
+    """Tests for grid_proportions with mask parameter."""
+    
+    def test_mask_basic(self):
+        """Test basic mask functionality."""
+        # Create a flat surface at z=2.0
+        vertices = [
+            [-10, -10, 2.0],
+            [10, -10, 2.0],
+            [-10, 10, 2.0],
+            [10, 10, 2.0]
+        ]
+        triangles = [[0, 1, 2], [1, 3, 2]]
+        mesh = Mesh(vertices, triangles)
+        
+        # Create a 5x5x5 grid
+        origin = [0, 0, 0]
+        dimensions = [1, 1, 1]
+        n_blocks = [5, 5, 5]
+        
+        # Create a mask that only computes the first quadrant
+        mask = np.zeros((5, 5, 5), dtype=bool)
+        mask[:2, :2, :] = True
+        
+        proportions = grid_proportions(
+            mesh, origin, dimensions, n_blocks, method='below', axis='z', mask=mask
+        )
+        
+        # Check that only masked blocks have non-zero proportions
+        assert proportions[:2, :2, :].sum() > 0  # Masked area should have values
+        assert proportions[2:, :, :].sum() == 0  # Unmasked area should be zero
+        assert proportions[:, 2:, :].sum() == 0  # Unmasked area should be zero
+    
+    def test_mask_sparse(self):
+        """Test with a very sparse mask."""
+        # Create a simple mesh
+        vertices = [[0, 0, 1.5], [5, 0, 1.5], [0, 5, 1.5], [5, 5, 1.5]]
+        triangles = [[0, 1, 2], [1, 3, 2]]
+        mesh = Mesh(vertices, triangles)
+        
+        # Large grid
+        origin = [0, 0, 0]
+        dimensions = [1, 1, 1]
+        n_blocks = [10, 10, 10]
+        
+        # Sparse mask - only a few blocks
+        mask = np.zeros((10, 10, 10), dtype=bool)
+        mask[0, 0, 0] = True
+        mask[5, 5, 5] = True
+        mask[9, 9, 9] = True
+        
+        proportions = grid_proportions(
+            mesh, origin, dimensions, n_blocks, method='below', axis='z', mask=mask
+        )
+        
+        # Only the three masked positions should have values
+        assert proportions[0, 0, 0] > 0
+        assert proportions[5, 5, 5] >= 0
+        assert proportions[9, 9, 9] >= 0
+        # All others should be zero
+        assert proportions.sum() == proportions[0, 0, 0] + proportions[5, 5, 5] + proportions[9, 9, 9]
+    
+    def test_mask_all_false(self):
+        """Test with a mask that's all False."""
+        vertices = [[0, 0, 1.0], [5, 0, 1.0], [0, 5, 1.0], [5, 5, 1.0]]
+        triangles = [[0, 1, 2], [1, 3, 2]]
+        mesh = Mesh(vertices, triangles)
+        
+        origin = [0, 0, 0]
+        dimensions = [1, 1, 1]
+        n_blocks = [5, 5, 5]
+        
+        # All False mask
+        mask = np.zeros((5, 5, 5), dtype=bool)
+        
+        proportions = grid_proportions(
+            mesh, origin, dimensions, n_blocks, method='below', axis='z', mask=mask
+        )
+        
+        # All proportions should be zero
+        assert np.all(proportions == 0.0)
+    
+    def test_mask_wrong_shape(self):
+        """Test that wrong mask shape raises an error."""
+        vertices = [[0, 0, 1.0], [5, 0, 1.0], [0, 5, 1.0], [5, 5, 1.0]]
+        triangles = [[0, 1, 2], [1, 3, 2]]
+        mesh = Mesh(vertices, triangles)
+        
+        origin = [0, 0, 0]
+        dimensions = [1, 1, 1]
+        n_blocks = [5, 5, 5]
+        
+        # Wrong shape mask
+        mask = np.zeros((4, 4, 4), dtype=bool)
+        
+        with pytest.raises(ValueError, match="mask shape"):
+            grid_proportions(
+                mesh, origin, dimensions, n_blocks, method='below', axis='z', mask=mask
+            )
+
+
+class TestBlockProportionsAutoOptimize:
+    """Tests for block_proportions auto-optimization."""
+    
+    def test_auto_optimize_regular_grid(self):
+        """Test that regular grid is automatically optimized."""
+        # Create a simple mesh
+        vertices = [[0, 0, 0.5], [5, 0, 0.5], [0, 5, 0.5], [5, 5, 0.5]]
+        triangles = [[0, 1, 2], [1, 3, 2]]
+        mesh = Mesh(vertices, triangles)
+        
+        # Create a regular grid of blocks
+        blocks = []
+        for i in range(5):
+            for j in range(5):
+                for k in range(3):
+                    blocks.append([i * 1.0, j * 1.0, k * 1.0, 1.0, 1.0, 1.0])
+        
+        # Should trigger auto-optimization (warning expected)
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            proportions = block_proportions(mesh, blocks, method='below', resolution=5)
+            assert len(w) == 1
+            assert "regular grid" in str(w[0].message).lower()
+        
+        # Should have correct number of results
+        assert len(proportions) == 75
+    
+    def test_auto_optimize_disabled(self):
+        """Test that auto-optimization can be disabled."""
+        vertices = [[0, 0, 0.5], [5, 0, 0.5], [0, 5, 0.5], [5, 5, 0.5]]
+        triangles = [[0, 1, 2], [1, 3, 2]]
+        mesh = Mesh(vertices, triangles)
+        
+        # Create a regular grid
+        blocks = []
+        for i in range(3):
+            for j in range(3):
+                for k in range(2):
+                    blocks.append([i * 1.0, j * 1.0, k * 1.0, 1.0, 1.0, 1.0])
+        
+        # Disable auto-optimization - should not warn
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            proportions = block_proportions(mesh, blocks, method='below', auto_optimize=False)
+            # Should not warn about grid detection
+            grid_warnings = [warning for warning in w if "regular grid" in str(warning.message).lower()]
+            assert len(grid_warnings) == 0
+        
+        assert len(proportions) == 18
+    
+    def test_auto_optimize_irregular_blocks(self):
+        """Test that irregular blocks don't trigger optimization."""
+        vertices = [[0, 0, 0.5], [5, 0, 0.5], [0, 5, 0.5], [5, 5, 0.5]]
+        triangles = [[0, 1, 2], [1, 3, 2]]
+        mesh = Mesh(vertices, triangles)
+        
+        # Create irregular blocks
+        blocks = [
+            [0.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+            [1.5, 0.0, 0.0, 1.0, 1.0, 1.0],  # Irregular spacing
+            [3.0, 0.0, 0.0, 1.0, 1.0, 1.0],
+        ]
+        
+        # Should not trigger optimization
+        import warnings
+        with warnings.catch_warnings(record=True) as w:
+            warnings.simplefilter("always")
+            proportions = block_proportions(mesh, blocks, method='below')
+            grid_warnings = [warning for warning in w if "regular grid" in str(warning.message).lower()]
+            assert len(grid_warnings) == 0
+        
+        assert len(proportions) == 3
