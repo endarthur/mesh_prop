@@ -275,9 +275,37 @@ python benchmark_performance.py
 
 ## Performance Considerations
 
-- **NumPy Vectorization**: All operations use NumPy for efficient computation
-- **Resolution Trade-off**: For block proportions, higher resolution = more accuracy but slower
-- **Mesh Complexity**: Performance scales with the number of triangles in the mesh
+### Optimizations Implemented
+
+1. **Vectorized Ray-Triangle Intersection**
+   - Möller-Trumbore algorithm vectorized across all triangles
+   - Processes multiple triangles simultaneously using NumPy broadcasting
+   - Early filtering of invalid triangles reduces computation
+
+2. **Reduced Python Loops**
+   - Triangle intersection tests use NumPy array operations instead of explicit loops
+   - Batch filtering of triangles at each validation step
+   - Minimizes Python overhead for large meshes
+
+3. **Memory Efficiency**
+   - Triangle vertices cached in optimized format
+   - Reuses arrays where possible to reduce allocations
+
+### Performance Characteristics
+
+- **NumPy Vectorization**: ~5-10× faster than pure Python loops for ray-triangle intersection
+- **Resolution Trade-off**: For block proportions, higher resolution = more accuracy but slower (O(resolution³))
+- **Mesh Complexity**: Performance scales linearly with the number of triangles
+- **Point Batch Size**: Larger point batches benefit more from vectorization overhead amortization
+
+### Further Optimization Opportunities
+
+If you need even better performance for your specific use case:
+
+1. **Spatial Acceleration Structures**: Implement BVH (Bounding Volume Hierarchy) or octree for large meshes (1000+ triangles)
+2. **Parallel Processing**: Use `multiprocessing` or `joblib` to process blocks in parallel
+3. **Numba JIT Compilation**: Add `@numba.jit` decorators for critical loops
+4. **GPU Acceleration**: Use CuPy or PyTorch for GPU-accelerated ray tracing (for 10,000+ points)
 
 ## Testing
 

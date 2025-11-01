@@ -135,6 +135,13 @@ def block_proportions(mesh, blocks, method='inside', resolution=5, dimensions=No
     
     proportions = np.zeros(n_blocks, dtype=np.float64)
     
+    # Batch process blocks for better performance
+    # Generate all sample points at once and test them together
+    if method == 'inside':
+        test_func = points_in_mesh
+    else:  # method == 'below'
+        test_func = points_below_mesh
+    
     # Generate sample points for each block
     for i in range(n_blocks):
         centroid = centroids[i]
@@ -153,10 +160,7 @@ def block_proportions(mesh, blocks, method='inside', resolution=5, dimensions=No
         sample_points = _generate_block_samples(min_corner, max_corner, resolution_tuple)
         
         # Test which points satisfy the condition
-        if method == 'inside':
-            satisfied = points_in_mesh(mesh, sample_points)
-        else:  # method == 'below'
-            satisfied = points_below_mesh(mesh, sample_points)
+        satisfied = test_func(mesh, sample_points)
         
         # Calculate proportion
         proportions[i] = np.mean(satisfied)

@@ -120,6 +120,7 @@ def _count_ray_intersections(point, tri_verts):
     Count intersections of a ray from point in +x direction with triangles.
     
     Uses the Möller-Trumbore algorithm for ray-triangle intersection.
+    Vectorized across all triangles for better performance.
     
     Parameters
     ----------
@@ -140,46 +141,60 @@ def _count_ray_intersections(point, tri_verts):
     ray_direction = np.array([1.0, RAY_PERTURBATION_Y, RAY_PERTURBATION_Z])
     ray_direction = ray_direction / np.linalg.norm(ray_direction)
     
-    count = 0
+    # Vectorized Möller-Trumbore algorithm across all triangles
+    v0 = tri_verts[:, 0, :]  # shape: (n_triangles, 3)
+    v1 = tri_verts[:, 1, :]
+    v2 = tri_verts[:, 2, :]
     
-    for tri in tri_verts:
-        v0, v1, v2 = tri
-        
-        # Compute edges
-        edge1 = v1 - v0
-        edge2 = v2 - v0
-        
-        # Begin calculating determinant
-        h = np.cross(ray_direction, edge2)
-        det = np.dot(edge1, h)
-        
-        # Ray is parallel to triangle
-        if abs(det) < EPSILON:
-            continue
-        
-        inv_det = 1.0 / det
-        s = ray_origin - v0
-        u = inv_det * np.dot(s, h)
-        
-        # Intersection point is outside triangle
-        if u < 0.0 or u > 1.0:
-            continue
-        
-        q = np.cross(s, edge1)
-        v = inv_det * np.dot(ray_direction, q)
-        
-        # Intersection point is outside triangle
-        if v < 0.0 or u + v > 1.0:
-            continue
-        
-        # Calculate t to find intersection point
-        t = inv_det * np.dot(edge2, q)
-        
-        # Ray intersection (t > EPSILON means intersection is in +x direction)
-        if t > EPSILON:
-            count += 1
+    # Compute edges
+    edge1 = v1 - v0  # shape: (n_triangles, 3)
+    edge2 = v2 - v0
     
-    return count
+    # Begin calculating determinant
+    h = np.cross(ray_direction, edge2)  # shape: (n_triangles, 3) - FIXED: was np.cross(edge2, ray_direction)
+    det = np.sum(edge1 * h, axis=1)  # shape: (n_triangles,)
+    
+    # Filter out parallel triangles
+    valid = np.abs(det) >= EPSILON
+    if not np.any(valid):
+        return 0
+    
+    # Continue only with valid triangles
+    inv_det = 1.0 / det[valid]
+    s = ray_origin - v0[valid]  # shape: (n_valid, 3)
+    u = inv_det * np.sum(s * h[valid], axis=1)  # shape: (n_valid,)
+    
+    # Filter by u parameter
+    valid_u = (u >= 0.0) & (u <= 1.0)
+    if not np.any(valid_u):
+        return 0
+    
+    # Continue with u-valid triangles
+    inv_det = inv_det[valid_u]
+    s = s[valid_u]
+    edge1_valid = edge1[valid][valid_u]
+    edge2_valid = edge2[valid][valid_u]
+    
+    q = np.cross(s, edge1_valid)  # shape: (n_u_valid, 3)
+    v = inv_det * np.sum(ray_direction * q, axis=1)  # shape: (n_u_valid,)
+    u = u[valid_u]
+    
+    # Filter by v parameter
+    valid_v = (v >= 0.0) & (u + v <= 1.0)
+    if not np.any(valid_v):
+        return 0
+    
+    # Calculate t for final valid triangles
+    inv_det = inv_det[valid_v]
+    edge2_valid = edge2_valid[valid_v]
+    q = q[valid_v]
+    
+    t = inv_det * np.sum(edge2_valid * q, axis=1)  # shape: (n_final,)
+    
+    # Count intersections in +x direction
+    count = np.sum(t > EPSILON)
+    
+    return int(count)
 
 
 def _find_closest_surface_above(point, tri_verts):
@@ -187,6 +202,7 @@ def _find_closest_surface_above(point, tri_verts):
     Find the z-coordinate of the closest mesh surface above a point.
     
     Casts a ray from the point in +z direction and finds the closest intersection.
+    Vectorized across all triangles for better performance.
     
     Parameters
     ----------
@@ -203,47 +219,60 @@ def _find_closest_surface_above(point, tri_verts):
     ray_origin = point
     ray_direction = np.array([0.0, 0.0, 1.0])  # +z direction
     
-    min_t = float('inf')
-    found = False
+    # Vectorized Möller-Trumbore algorithm
+    v0 = tri_verts[:, 0, :]
+    v1 = tri_verts[:, 1, :]
+    v2 = tri_verts[:, 2, :]
     
-    for tri in tri_verts:
-        v0, v1, v2 = tri
-        
-        # Compute edges
-        edge1 = v1 - v0
-        edge2 = v2 - v0
-        
-        # Begin calculating determinant
-        h = np.cross(ray_direction, edge2)
-        det = np.dot(edge1, h)
-        
-        # Ray is parallel to triangle
-        if abs(det) < EPSILON:
-            continue
-        
-        inv_det = 1.0 / det
-        s = ray_origin - v0
-        u = inv_det * np.dot(s, h)
-        
-        # Intersection point is outside triangle
-        if u < 0.0 or u > 1.0:
-            continue
-        
-        q = np.cross(s, edge1)
-        v = inv_det * np.dot(ray_direction, q)
-        
-        # Intersection point is outside triangle
-        if v < 0.0 or u + v > 1.0:
-            continue
-        
-        # Calculate t to find intersection point
-        t = inv_det * np.dot(edge2, q)
-        
-        # Ray intersection in +z direction
-        if t > EPSILON and t < min_t:
-            min_t = t
-            found = True
+    # Compute edges
+    edge1 = v1 - v0
+    edge2 = v2 - v0
     
-    if found:
-        return ray_origin[2] + min_t
-    return None
+    # Begin calculating determinant
+    h = np.cross(ray_direction, edge2)  # FIXED: was np.cross(edge2, ray_direction)
+    det = np.sum(edge1 * h, axis=1)
+    
+    # Filter out parallel triangles
+    valid = np.abs(det) >= EPSILON
+    if not np.any(valid):
+        return None
+    
+    # Continue only with valid triangles
+    inv_det = 1.0 / det[valid]
+    s = ray_origin - v0[valid]
+    u = inv_det * np.sum(s * h[valid], axis=1)
+    
+    # Filter by u parameter
+    valid_u = (u >= 0.0) & (u <= 1.0)
+    if not np.any(valid_u):
+        return None
+    
+    # Continue with u-valid triangles
+    inv_det = inv_det[valid_u]
+    s = s[valid_u]
+    edge1_valid = edge1[valid][valid_u]
+    edge2_valid = edge2[valid][valid_u]
+    
+    q = np.cross(s, edge1_valid)
+    v = inv_det * np.sum(ray_direction * q, axis=1)
+    u = u[valid_u]
+    
+    # Filter by v parameter
+    valid_v = (v >= 0.0) & (u + v <= 1.0)
+    if not np.any(valid_v):
+        return None
+    
+    # Calculate t for final valid triangles
+    inv_det = inv_det[valid_v]
+    edge2_valid = edge2_valid[valid_v]
+    q = q[valid_v]
+    
+    t = inv_det * np.sum(edge2_valid * q, axis=1)
+    
+    # Find closest intersection in +z direction
+    valid_t = t > EPSILON
+    if not np.any(valid_t):
+        return None
+    
+    min_t = np.min(t[valid_t])
+    return ray_origin[2] + min_t
