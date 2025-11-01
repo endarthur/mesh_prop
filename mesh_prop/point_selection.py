@@ -5,6 +5,17 @@ Point selection algorithms for determining which points are inside or below a me
 import numpy as np
 
 
+# Numerical tolerance for ray-triangle intersection tests
+# This value determines when two floating-point numbers are considered equal
+EPSILON = 1e-10
+
+# Ray direction perturbation for numerical stability
+# Using irrational-looking numbers helps avoid hitting mesh edges/vertices exactly,
+# which would cause ambiguous intersection counts in the ray-casting algorithm
+RAY_PERTURBATION_Y = 0.123456789
+RAY_PERTURBATION_Z = 0.987654321
+
+
 def points_in_mesh(mesh, points):
     """
     Determine which points are inside a closed mesh using ray casting algorithm.
@@ -126,11 +137,10 @@ def _count_ray_intersections(point, tri_verts):
     # Use a slightly perturbed ray direction to avoid hitting edges/vertices
     # This helps with numerical stability by avoiding degenerate cases
     # where the ray hits exactly on an edge or vertex
-    ray_direction = np.array([1.0, 0.123456789, 0.987654321])
+    ray_direction = np.array([1.0, RAY_PERTURBATION_Y, RAY_PERTURBATION_Z])
     ray_direction = ray_direction / np.linalg.norm(ray_direction)
     
     count = 0
-    epsilon = 1e-10
     
     for tri in tri_verts:
         v0, v1, v2 = tri
@@ -144,7 +154,7 @@ def _count_ray_intersections(point, tri_verts):
         det = np.dot(edge1, h)
         
         # Ray is parallel to triangle
-        if abs(det) < epsilon:
+        if abs(det) < EPSILON:
             continue
         
         inv_det = 1.0 / det
@@ -165,8 +175,8 @@ def _count_ray_intersections(point, tri_verts):
         # Calculate t to find intersection point
         t = inv_det * np.dot(edge2, q)
         
-        # Ray intersection (t > epsilon means intersection is in +x direction)
-        if t > epsilon:
+        # Ray intersection (t > EPSILON means intersection is in +x direction)
+        if t > EPSILON:
             count += 1
     
     return count
@@ -195,7 +205,6 @@ def _find_closest_surface_above(point, tri_verts):
     
     min_t = float('inf')
     found = False
-    epsilon = 1e-10
     
     for tri in tri_verts:
         v0, v1, v2 = tri
@@ -209,7 +218,7 @@ def _find_closest_surface_above(point, tri_verts):
         det = np.dot(edge1, h)
         
         # Ray is parallel to triangle
-        if abs(det) < epsilon:
+        if abs(det) < EPSILON:
             continue
         
         inv_det = 1.0 / det
@@ -231,7 +240,7 @@ def _find_closest_surface_above(point, tri_verts):
         t = inv_det * np.dot(edge2, q)
         
         # Ray intersection in +z direction
-        if t > epsilon and t < min_t:
+        if t > EPSILON and t < min_t:
             min_t = t
             found = True
     
