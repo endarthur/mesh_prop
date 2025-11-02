@@ -136,92 +136,26 @@ def grid_proportions(mesh, origin, dimensions, n_blocks, method='below', axis='z
         else:  # z-axis
             mask_2d = np.any(mask, axis=2)  # Project along z
     
-    # Try to use cached height map if available
-    cache_key = _make_height_map_cache_key(origin, dimensions, n_blocks, axis_idx, method, mask_2d)
-    
-    # Render mesh to 2D height map (or use cache)
+    # Render mesh to 2D height map
     if method == 'below':
-        # Check cache first
-        if hasattr(mesh, '_height_map_cache') and cache_key in mesh._height_map_cache:
-            height_map = mesh._height_map_cache[cache_key]
-        else:
-            height_map = _render_surface_height_map(
-                mesh, origin, dimensions, n_blocks, axis_idx, mask_2d
-            )
-            # Store in cache
-            if not hasattr(mesh, '_height_map_cache'):
-                mesh._height_map_cache = {}
-            mesh._height_map_cache[cache_key] = height_map
-        
+        height_map = _render_surface_height_map(
+            mesh, origin, dimensions, n_blocks, axis_idx, mask_2d
+        )
         # Calculate proportions based on height map
         proportions = _calculate_proportions_below(
             height_map, origin, dimensions, n_blocks, axis_idx, mask
         )
     else:  # method == 'inside'
-        # Check cache first
-        if hasattr(mesh, '_height_map_cache') and cache_key in mesh._height_map_cache:
-            bottom_map, top_map = mesh._height_map_cache[cache_key]
-        else:
-            # For closed meshes, render both top and bottom surfaces
-            bottom_map, top_map = _render_closed_mesh_height_maps(
-                mesh, origin, dimensions, n_blocks, axis_idx, mask_2d
-            )
-            # Store in cache
-            if not hasattr(mesh, '_height_map_cache'):
-                mesh._height_map_cache = {}
-            mesh._height_map_cache[cache_key] = (bottom_map, top_map)
-        
+        # For closed meshes, render both top and bottom surfaces
+        bottom_map, top_map = _render_closed_mesh_height_maps(
+            mesh, origin, dimensions, n_blocks, axis_idx, mask_2d
+        )
         # Calculate proportions based on both height maps
         proportions = _calculate_proportions_inside(
             bottom_map, top_map, origin, dimensions, n_blocks, axis_idx, mask
         )
     
     return proportions
-
-
-def _make_height_map_cache_key(origin, dimensions, n_blocks, axis_idx, method, mask_2d):
-    """
-    Create a unique cache key for height map caching.
-    
-    Parameters
-    ----------
-    origin : ndarray
-        Grid origin.
-    dimensions : ndarray
-        Block dimensions.
-    n_blocks : ndarray
-        Number of blocks.
-    axis_idx : int
-        Axis index.
-    method : str
-        Method ('below' or 'inside').
-    mask_2d : ndarray or None
-        2D mask (if any).
-    
-    Returns
-    -------
-    str
-        Cache key.
-    """
-    # Create a hashable representation of all parameters
-    components = [
-        tuple(origin),
-        tuple(dimensions),
-        tuple(n_blocks),
-        axis_idx,
-        method
-    ]
-    
-    # Add mask to key if provided
-    if mask_2d is not None:
-        # Use hash of mask array for efficiency
-        mask_bytes = mask_2d.tobytes()
-        mask_hash = hashlib.md5(mask_bytes).hexdigest()
-        components.append(mask_hash)
-    else:
-        components.append(None)
-    
-    return str(tuple(components))
 
 
 def _render_surface_height_map(mesh, origin, dimensions, n_blocks, axis_idx, mask_2d=None):
