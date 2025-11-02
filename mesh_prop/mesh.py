@@ -78,6 +78,68 @@ class Mesh:
         if use_bvh and self.n_triangles > 0:
             tri_verts = self.get_all_triangle_vertices()
             self.bvh = BVH(tri_verts)
+        
+        # Internal caches for reuse (Phase 1: Mesh Caching & Reuse)
+        self._height_map_cache = {}  # Cache for grid_proportions height maps
+        self._grid_detection_cache = {}  # Cache for grid detection results
+    
+    def _get_height_map_cache_key(self, origin, dimensions, n_blocks, axis, method):
+        """
+        Generate a hashable cache key for height map caching.
+        
+        Parameters
+        ----------
+        origin : array_like
+            Grid origin coordinates.
+        dimensions : array_like
+            Block dimensions.
+        n_blocks : array_like
+            Number of blocks along each axis.
+        axis : str
+            Axis perpendicular to the grid ('x', 'y', or 'z').
+        method : str
+            Method type ('below' or 'inside').
+        
+        Returns
+        -------
+        tuple
+            Hashable cache key.
+        """
+        origin_tuple = tuple(np.asarray(origin, dtype=np.float64).flatten())
+        dims_tuple = tuple(np.asarray(dimensions, dtype=np.float64).flatten())
+        nblocks_tuple = tuple(np.asarray(n_blocks, dtype=np.int32).flatten())
+        return (origin_tuple, dims_tuple, nblocks_tuple, axis, method)
+    
+    def get_cached_height_map(self, origin, dimensions, n_blocks, axis, method):
+        """
+        Retrieve cached height map if available.
+        
+        Returns
+        -------
+        dict or None
+            Cached height map data or None if not found.
+        """
+        cache_key = self._get_height_map_cache_key(origin, dimensions, n_blocks, axis, method)
+        return self._height_map_cache.get(cache_key)
+    
+    def cache_height_map(self, origin, dimensions, n_blocks, axis, method, height_map_data):
+        """
+        Cache a computed height map for future reuse.
+        
+        Parameters
+        ----------
+        origin, dimensions, n_blocks, axis, method : various
+            Parameters that define the height map.
+        height_map_data : dict
+            Dictionary containing height map(s) and metadata.
+        """
+        cache_key = self._get_height_map_cache_key(origin, dimensions, n_blocks, axis, method)
+        self._height_map_cache[cache_key] = height_map_data
+    
+    def clear_caches(self):
+        """Clear all internal caches. Useful if mesh is modified externally."""
+        self._height_map_cache.clear()
+        self._grid_detection_cache.clear()
     
     def get_triangle_vertices(self, triangle_idx):
         """
@@ -121,6 +183,16 @@ class Mesh:
         min_bounds = np.min(self.vertices, axis=0)
         max_bounds = np.max(self.vertices, axis=0)
         return min_bounds, max_bounds
+    
+    def clear_cache(self):
+        """
+        Clear all internal caches.
+        
+        Call this method if the mesh is modified externally.
+        Note: Modifying mesh data directly is not recommended.
+        """
+        self._height_map_cache.clear()
+        self._grid_detection_cache.clear()
     
     def __repr__(self):
         return (
