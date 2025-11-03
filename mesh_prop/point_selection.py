@@ -139,6 +139,12 @@ def _count_ray_intersections(point, tri_verts):
     Uses the Möller-Trumbore algorithm for ray-triangle intersection.
     Vectorized across all triangles for better performance.
     
+    Algorithm Reference
+    -------------------
+    Möller, T., & Trumbore, B. (1997). Fast, Minimum Storage Ray-Triangle 
+    Intersection. Journal of Graphics Tools, 2(1), 21-28.
+    DOI: 10.1080/10867651.1997.10487468
+    
     Parameters
     ----------
     point : ndarray, shape (3,)
@@ -220,6 +226,12 @@ def _find_closest_surface_above(point, tri_verts):
     
     Casts a ray from the point in +z direction and finds the closest intersection.
     Vectorized across all triangles for better performance.
+    
+    Algorithm Reference
+    -------------------
+    Uses the Möller-Trumbore ray-triangle intersection algorithm:
+    Möller, T., & Trumbore, B. (1997). Fast, Minimum Storage Ray-Triangle 
+    Intersection. Journal of Graphics Tools, 2(1), 21-28.
     
     Parameters
     ----------
