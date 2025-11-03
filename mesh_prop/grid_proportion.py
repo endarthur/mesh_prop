@@ -310,7 +310,12 @@ def _render_closed_mesh_height_maps(mesh, origin, dimensions, n_blocks, axis_idx
 
 
 def _find_surface_height(ray_origin, ray_direction, tri_verts, axis_idx):
-    """Find the first surface intersection height along a ray."""
+    """
+    Find the first surface intersection height along a ray.
+    
+    Uses the Möller-Trumbore algorithm for ray-triangle intersection.
+    Reference: Möller & Trumbore (1997), Journal of Graphics Tools, 2(1), 21-28.
+    """
     from .point_selection import EPSILON
     
     min_t = None
@@ -353,7 +358,12 @@ def _find_surface_height(ray_origin, ray_direction, tri_verts, axis_idx):
 
 
 def _find_all_surface_heights(ray_origin, ray_direction, tri_verts, axis_idx):
-    """Find all surface intersection heights along a ray."""
+    """
+    Find all surface intersection heights along a ray.
+    
+    Uses the Möller-Trumbore algorithm for ray-triangle intersection.
+    Reference: Möller & Trumbore (1997), Journal of Graphics Tools, 2(1), 21-28.
+    """
     from .point_selection import EPSILON
     
     heights = []

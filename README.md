@@ -529,6 +529,19 @@ Run with coverage:
 pytest tests/ --cov=mesh_prop --cov-report=html
 ```
 
+## Acknowledgments
+
+This library implements several well-established algorithms from computer graphics and computational geometry. See [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) for detailed attribution of algorithms and techniques used.
+
+Key algorithms:
+- **Möller-Trumbore Algorithm** for ray-triangle intersection
+- **Bounding Volume Hierarchy (BVH)** for spatial acceleration
+- **Ray Casting** for point-in-mesh determination
+
+## Development
+
+This project was developed with assistance from AI tools including GitHub Copilot. All code is original or based on published algorithms with proper attribution. See [ACKNOWLEDGMENTS.md](ACKNOWLEDGMENTS.md) for details.
+
 ## License
 
 MIT License - see LICENSE file for details.
